@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useForm, Controller, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,8 @@ export default function FlightSearchForm() {
       ],
       returnDate: addDays(new Date(), 7),
     });
-  }, [form]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const { fields, append, remove } = useFieldArray({
@@ -64,19 +65,22 @@ export default function FlightSearchForm() {
   
   useEffect(() => {
     if (!isMounted) return; // Don't run this logic on initial server render
-    const currentLegs = form.getValues('legs');
-    const firstLeg = currentLegs.length > 0 ? currentLegs[0] : { origin: '', destination: '', departureDate: new Date() };
-
-    remove(); // remove all legs
     
     if (tripType === 'multi-city') {
-      append(firstLeg);
-      append({ origin: '', destination: '', departureDate: new Date() });
+      if (fields.length < 2) {
+        // remove all legs to start fresh
+        remove();
+        append({ origin: '', destination: '', departureDate: new Date() });
+        append({ origin: '', destination: '', departureDate: new Date() });
+      }
     } else {
-      append(firstLeg);
+       if (fields.length > 1) {
+         const firstLeg = form.getValues('legs')[0] || { origin: '', destination: '', departureDate: new Date() };
+         remove();
+         append(firstLeg);
+       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripType, isMounted]);
+  }, [tripType, isMounted, append, fields.length, form, remove]);
 
 
   const onSubmit = async (data: SearchFormData) => {
@@ -157,31 +161,17 @@ export default function FlightSearchForm() {
                   </FormItem>
                 )}
               />
-
+              
               <div className="space-y-4">
-                {fields.map((item, index) => {
-                  const isMultiCity = tripType === 'multi-city';
-                  const isReturnOrOneWay = tripType === 'return' || tripType === 'one-way';
-
-                  if (isReturnOrOneWay && index > 0) return null;
-
-                  return (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        "grid items-end gap-x-4 gap-y-4",
-                        isMultiCity && "p-4 border rounded-md relative",
-                        isReturnOrOneWay && "grid-cols-1 md:grid-cols-2",
-                        isMultiCity && "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-                      )}
-                    >
-                      {isMultiCity && fields.length > 2 && (
-                        <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={() => remove(index)}>
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">Remove leg</span>
-                        </Button>
-                      )}
-
+                {fields.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 items-end gap-x-4 gap-y-4",
+                      tripType === 'multi-city' && "p-4 border rounded-md relative",
+                    )}
+                  >
+                    <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
                       <FormField control={form.control} name={`legs.${index}.origin`} render={({ field }) => (
                         <FormItem>
                           <FormLabel>From</FormLabel>
@@ -189,7 +179,6 @@ export default function FlightSearchForm() {
                           <FormMessage />
                         </FormItem>
                       )} />
-
                       <FormField control={form.control} name={`legs.${index}.destination`} render={({ field }) => (
                         <FormItem>
                           <FormLabel>To</FormLabel>
@@ -197,78 +186,61 @@ export default function FlightSearchForm() {
                           <FormMessage />
                         </FormItem>
                       )} />
+                    </div>
 
-                      {isMultiCity && (
-                        <FormField control={form.control} name={`legs.${index}.departureDate`} render={({ field }) => (
+                    <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                      <FormField control={form.control} name={`legs.${index}.departureDate`} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{tripType === 'multi-city' ? `Leg ${index + 1} Date` : 'Departure'}</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !field.value && 'text-muted-foreground')}>
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {field.value ? format(field.value as Date, 'PPP') : <span>Pick a date</span>}
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value as Date} onSelect={field.onChange} initialFocus /></PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+
+                      {tripType === 'return' && index === 0 && (
+                        <FormField control={form.control} name="returnDate" render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Departure</FormLabel>
+                            <FormLabel>Return</FormLabel>
                             <Popover>
                               <PopoverTrigger asChild>
                                 <FormControl>
                                   <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !field.value && 'text-muted-foreground')}>
                                     <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {field.value ? format(field.value as Date, 'PPP') : <span>Pick a date</span>}
+                                    {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
                                   </Button>
                                 </FormControl>
                               </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value as Date} onSelect={field.onChange} initialFocus /></PopoverContent>
+                              <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent>
                             </Popover>
                             <FormMessage />
                           </FormItem>
                         )} />
                       )}
                     </div>
-                  );
-                })}
-
-                {tripType === 'multi-city' && (
+                     {tripType === 'multi-city' && fields.length > 2 && (
+                        <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={() => remove(index)}>
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Remove leg</span>
+                        </Button>
+                      )}
+                  </div>
+                ))}
+                 {tripType === 'multi-city' && (
                   <Button type="button" variant="outline" className="w-full" onClick={() => append({ origin: '', destination: '', departureDate: new Date() })}>
                     <Plus className="mr-2 h-4 w-4" /> Add another flight
                   </Button>
                 )}
               </div>
-
-              {(tripType === 'return' || tripType === 'one-way') && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
-                  <FormField control={form.control} name="legs.0.departureDate" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Departure</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !field.value && 'text-muted-foreground')}>
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {field.value ? format(field.value as Date, 'PPP') : <span>Pick a date</span>}
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value as Date} onSelect={field.onChange} initialFocus /></PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-
-                  {tripType === 'return' && (
-                    <FormField control={form.control} name="returnDate" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Return</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !field.value && 'text-muted-foreground')}>
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  )}
-                </div>
-              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-4 items-end">
                   <FormField control={form.control} name="adults" render={({field}) => (
